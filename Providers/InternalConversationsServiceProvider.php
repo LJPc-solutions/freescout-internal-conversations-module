@@ -332,6 +332,14 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 
             return $users_to_notify;
         }, 20, 4 );
+
+        \Eventy::addFilter( 'conversation.type_name', function ( $type ) {
+            if ( (int) $type === Conversation::TYPE_CUSTOM ) {
+                return __( 'Internal conversation' );
+            }
+
+            return $type;
+        }, 10, 1 );
     }
 
     /**
