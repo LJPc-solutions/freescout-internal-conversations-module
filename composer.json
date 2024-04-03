@@ -1,0 +1,25 @@
+{
+    "name": "freescout/internalconversations",
+    "description": "",
+    "authors": [
+        {
+            "name": "LJPc solutions",
+            "email": "support@ljpc.nl"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Modules\\InternalConversations\\Providers\\InternalConversationsServiceProvider"
+            ],
+            "aliases": {
+
+            }
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\InternalConversations\\": ""
+        }
+    }
+}

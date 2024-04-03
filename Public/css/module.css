@@ -1,0 +1,30 @@
+.ic-user-item {
+    display: block !important;
+    cursor: pointer !important;
+}
+
+.ic-user-item:focus {
+    text-decoration: none;
+}
+
+.ic-user-item:hover {
+    text-decoration: none;
+    background-color: #f1f3f5;
+}
+
+.ic-user-item .glyphicon,
+.ic-user-item:hover .glyphicon {
+    color: #dfe3e7;
+}
+
+.ic-user-item:hover {
+    color: #2a3b47 !important;
+}
+
+.ic-user-item.ic-user-subscribed .glyphicon {
+    color: #93a1af;
+}
+
+.ic-user-item.ic-user-self {
+    cursor: default;
+}

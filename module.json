@@ -1,0 +1,26 @@
+{
+    "name": "Internal Conversations",
+    "alias": "internalconversations",
+    "description": "Create internal conversations between users with support for teams and mentions!",
+    "version": "1.0.1",
+    "detailsUrl": "",
+    "author": "LJPc solutions",
+    "authorUrl": "https://ljpc.solutions/",
+    "requiredAppVersion": "1.8.126",
+    "license": "AGPL-3.0",
+    "keywords": [],
+    "active": 0,
+    "order": 0,
+    "providers": [
+        "Modules\\InternalConversations\\Providers\\InternalConversationsServiceProvider"
+    ],
+    "aliases": {
+        "InternalConversations": "Modules\\InternalConversations\\Providers\\InternalConversationsServiceProvider"
+    },
+    "files": [
+        "start.php"
+    ],
+    "requires": [],
+    "latestVersionUrl": "https://resources.ljpc.network/freescout-modules/internal-conversations/version.txt",
+    "latestVersionZipUrl": "https://resources.ljpc.network/freescout-modules/internal-conversations/latest.zip"
+}
