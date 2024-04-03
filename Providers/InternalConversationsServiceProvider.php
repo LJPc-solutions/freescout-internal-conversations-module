@@ -104,6 +104,8 @@ class InternalConversationsServiceProvider extends ServiceProvider {
                 $connectedUsers[] = (string) auth()->user()->id;
             }
             $conversation->setMeta( 'internal_conversations.users', $connectedUsers );
+            $conversation->last_reply_at   = date( 'Y-m-d H:i:s' );
+            $conversation->last_reply_from = Conversation::PERSON_USER;
             $conversation->save();
         }, 10, 2 );
 
@@ -196,6 +198,7 @@ class InternalConversationsServiceProvider extends ServiceProvider {
             } else {
                 $query->where( 'type', '!=', $customType );
             }
+
 
             return $query;
         }, 10, 3 );
