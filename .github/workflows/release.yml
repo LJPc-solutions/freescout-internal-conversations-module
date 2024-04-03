@@ -34,12 +34,3 @@ jobs:
             password: ${{ secrets.FTP_PASSWORD }}
             local-dir: ./
             server-dir: './'
-
-    -   name: Upload binaries to release
-        uses: svenstaro/upload-release-action@v2
-        with:
-            repo_token: ${{ secrets.GITHUB_TOKEN }}
-            file: ${GITHUB_REF_NAME}.zip
-            asset_name: "InternalConversations.zip"
-            tag: ${{ github.ref }}
-            overwrite: true
