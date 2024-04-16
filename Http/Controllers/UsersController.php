@@ -17,6 +17,7 @@ class UsersController extends Controller {
             'pagination' => [ 'more' => false ],
         ];
 
+        $allTeams = [];
         if ( class_exists( Teams::class ) ) {
             //Teams are available
             $allTeams = Teams::getTeams( true );
