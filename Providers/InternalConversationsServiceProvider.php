@@ -3,6 +3,7 @@
 namespace Modules\InternalConversations\Providers;
 
 use App\Conversation;
+use App\ConversationFolder;
 use App\Folder;
 use App\Mailbox;
 use App\Subscription;
@@ -168,7 +169,7 @@ class InternalConversationsServiceProvider extends ServiceProvider {
             }
 
 
-                if ( $folder->type == Folder::TYPE_MINE ) {
+            if ( $folder->type == Folder::TYPE_MINE ) {
                 $query_conversations = Conversation::where( 'user_id', $user_id )
                                                    ->where( 'mailbox_id', $folder->mailbox_id )
                                                    ->whereIn( 'status', [ Conversation::STATUS_ACTIVE, Conversation::STATUS_PENDING ] )
@@ -201,7 +202,108 @@ class InternalConversationsServiceProvider extends ServiceProvider {
             if ( count( $allowedConversations ) > 0 ) {
                 $query->whereRaw( "(`conversations`.type != $customType OR `conversations`.id IN (" . implode( ',', $allowedConversations ) . "))" );
             } else {
-                $query->where( 'type', '!=', $customType );
+                $query->where( 'conversations.type', '!=', $customType );
+            }
+
+
+            return $query;
+        }, 10, 3 );
+        \Eventy::addFilter( 'globalmailbox.conversations_query', function ( $query, $folder, $user_id ) {
+            $customType = Conversation::TYPE_CUSTOM;
+
+            $teamIds = [];
+            if ( class_exists( Teams::class ) ) {
+                $teamsForUser = User::whereRaw( "last_name = '" . Teams::TEAM_USER_LAST_NAME . "' and email like '" . Teams::TEAM_USER_EMAIL_PREFIX . "%' and JSON_CONTAINS(emails,'\"$user_id\"','$')" )->get();
+                $teamIds      = $teamsForUser->pluck( 'id' )->toArray();
+            }
+            $rawSqlBuilder = "JSON_CONTAINS(meta, '\"$user_id\"', '$.\"internal_conversations.users\"')";
+
+            foreach ( $teamIds as $teamId ) {
+                $rawSqlBuilder .= " OR JSON_CONTAINS(meta, '\"$teamId\"', '$.\"internal_conversations.users\"')";
+            }
+
+            if ( $folder->type == Folder::TYPE_DRAFTS ) {
+                $rawSqlBuilder .= ' OR (`conversations`.created_by_user_id = ' . $user_id . ' AND `conversations`.state = ' . Conversation::STATE_DRAFT . ')';
+            }
+
+
+            if ( is_int( $user_id ) ) {
+                $user = User::find( $user_id );
+            }
+            if ( empty( $mailbox_ids ) ) {
+                $mailbox_ids = $user->mailboxesIdsCanView();
+            }
+            if ( $folder->type == - 100 ) {
+                // Inbox.
+                $query_conversations = Conversation::whereIn( 'mailbox_id', $mailbox_ids )
+                                                   ->where( 'state', Conversation::STATE_PUBLISHED );
+
+                //} elseif ($folder->type == self::FOLDER_SENT) {
+
+
+            } else if ( $folder->type == Folder::TYPE_MINE ) {
+                // Get conversations from personal folder
+                $query_conversations = Conversation::where( 'user_id', $user->id )
+                                                   ->whereIn( 'status', [ Conversation::STATUS_ACTIVE, Conversation::STATUS_PENDING ] )
+                                                   ->where( 'state', Conversation::STATE_PUBLISHED );
+
+            } else if ( $folder->type == Folder::TYPE_ASSIGNED ) {
+
+                // Assigned - do not show my conversations
+                $query_conversations =
+                    // This condition also removes from result records with user_id = null
+                    Conversation::whereIn( 'mailbox_id', $mailbox_ids )
+                                ->where( 'user_id', '<>', $user->id )
+                                ->whereIn( 'status', [ Conversation::STATUS_ACTIVE, Conversation::STATUS_PENDING ] )
+                                ->where( 'state', Conversation::STATE_PUBLISHED );
+
+            } else if ( $folder->type == Folder::TYPE_STARRED ) {
+                $starred_conversation_ids = ConversationFolder::join( 'folders', 'conversation_folder.folder_id', '=', 'folders.id' )
+                                                              ->whereIn( 'folders.mailbox_id', $mailbox_ids )
+                                                              ->where( 'folders.user_id', $user->id )
+                                                              ->where( 'folders.type', Folder::TYPE_STARRED )
+                                                              ->pluck( 'conversation_folder.conversation_id' );
+                $query_conversations      = Conversation::whereIn( 'id', $starred_conversation_ids );
+
+            } else if ( $folder->isIndirect() ) {
+
+                // Conversations are connected to folder via conversation_folder table.
+                $query_conversations = Conversation::select( 'conversations.*' )
+                                                   ->join( 'conversation_folder', 'conversations.id', '=', 'conversation_folder.conversation_id' )
+                                                   ->join( 'folders', 'conversation_folder.folder_id', '=', 'folders.id' )
+                                                   ->whereIn( 'folders.mailbox_id', $mailbox_ids )
+                                                   ->where( 'folders.type', $folder->type );
+
+                if ( $folder->type != Folder::TYPE_DRAFTS ) {
+                    $query_conversations->where( 'state', Conversation::STATE_PUBLISHED );
+                }
+
+            } else if ( $folder->type == Folder::TYPE_DELETED ) {
+                $query_conversations = Conversation::whereIn( 'mailbox_id', $mailbox_ids )
+                                                   ->where( 'state', Conversation::STATE_DELETED );
+            } else if ( \Module::isActive( 'teams' ) && $folder->type == \Modules\Teams\Providers\TeamsServiceProvider::FOLDER_TYPE ) {
+                $team_id             = - 1000 - $folder->id;
+                $query_conversations =
+                    Conversation::whereIn( 'mailbox_id', $mailbox_ids )
+                                ->where( 'user_id', $team_id )
+                                ->whereIn( 'status', [ Conversation::STATUS_ACTIVE, Conversation::STATUS_PENDING ] )
+                                ->where( 'state', Conversation::STATE_PUBLISHED );
+            } else {
+                // Get all folders of this type.
+                $folder_ids          = Folder::whereIn( 'mailbox_id', $mailbox_ids )
+                                             ->where( 'type', $folder->type )
+                                             ->pluck( 'id' );
+                $query_conversations = Conversation::whereIn( 'folder_id', $folder_ids )
+                                                   ->where( 'state', Conversation::STATE_PUBLISHED );
+            }
+
+
+            $allowedConversations = $query_conversations->where( 'type', $customType )->whereRaw( $rawSqlBuilder )->pluck( 'id' )->toArray();
+
+            if ( count( $allowedConversations ) > 0 ) {
+                $query->whereRaw( "(`conversations`.type != $customType OR `conversations`.id IN (" . implode( ',', $allowedConversations ) . "))" );
+            } else {
+                $query->where( 'conversations.type', '!=', $customType );
             }
 
 
