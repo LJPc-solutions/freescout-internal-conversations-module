@@ -163,7 +163,12 @@ class InternalConversationsServiceProvider extends ServiceProvider {
                 $rawSqlBuilder .= " OR JSON_CONTAINS(meta, '\"$teamId\"', '$.\"internal_conversations.users\"')";
             }
 
-            if ( $folder->type == Folder::TYPE_MINE ) {
+            if ( $folder->type == Folder::TYPE_DRAFTS ) {
+                $rawSqlBuilder .= ' OR (`conversations`.created_by_user_id = ' . $user_id . ' AND `conversations`.state = ' . Conversation::STATE_DRAFT . ')';
+            }
+
+
+                if ( $folder->type == Folder::TYPE_MINE ) {
                 $query_conversations = Conversation::where( 'user_id', $user_id )
                                                    ->where( 'mailbox_id', $folder->mailbox_id )
                                                    ->whereIn( 'status', [ Conversation::STATUS_ACTIVE, Conversation::STATUS_PENDING ] )
@@ -194,7 +199,7 @@ class InternalConversationsServiceProvider extends ServiceProvider {
             $allowedConversations = $query_conversations->where( 'type', $customType )->whereRaw( $rawSqlBuilder )->pluck( 'id' )->toArray();
 
             if ( count( $allowedConversations ) > 0 ) {
-                $query->whereRaw( "(type != $customType OR id IN (" . implode( ',', $allowedConversations ) . "))" );
+                $query->whereRaw( "(`conversations`.type != $customType OR `conversations`.id IN (" . implode( ',', $allowedConversations ) . "))" );
             } else {
                 $query->where( 'type', '!=', $customType );
             }
@@ -215,7 +220,13 @@ class InternalConversationsServiceProvider extends ServiceProvider {
                 $teamIds      = $teamsForUser->pluck( 'id' )->toArray();
             }
 
+
             $connectedUsers = $conversation->getMeta( 'internal_conversations.users', [] );
+
+            if ( $conversation->state === Conversation::STATE_DRAFT ) {
+                $connectedUsers[] = $conversation->created_by_user_id;
+            }
+
             if ( ! in_array( $user_id, $connectedUsers ) ) {
                 $teamIsConnected = false;
 
