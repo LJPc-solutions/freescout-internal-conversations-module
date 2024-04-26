@@ -116,7 +116,8 @@ function initUserSelector(input, custom_options) {
                     q: params.term,
                     exclude_email: input.attr('data-customer_email'),
                     use_id: use_id,
-                    page: params.page
+                    page: params.page,
+                    mailbox_id: $('body').attr('data-mailbox_id')
                 };
             }
         },

@@ -86,8 +86,9 @@ class InternalConversationsServiceProvider extends ServiceProvider {
                 return;
             }
 
-            Subscription::registerEvent( self::EVENT_IC_NEW_MESSAGE, $conversation, auth()->user()->id );
+            $mailbox = $conversation->mailbox()->first();
 
+            Subscription::registerEvent( self::EVENT_IC_NEW_MESSAGE, $conversation, auth()->user()->id );
 
             /**
              * @var Conversation $conversation
@@ -96,6 +97,9 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 
             $users = $request->all()['users'] ?? [];
             foreach ( $users as $user ) {
+                if ( ! $mailbox->userHasAccess( $user ) ) {
+                    continue;
+                }
                 if ( ! in_array( (string) $user, $connectedUsers ) ) {
                     $connectedUsers[] = (string) $user;
                 }

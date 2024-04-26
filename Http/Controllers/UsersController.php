@@ -3,6 +3,7 @@
 namespace Modules\InternalConversations\Http\Controllers;
 
 use App\Conversation;
+use App\Mailbox;
 use App\User;
 use Helper;
 use Illuminate\Routing\Controller;
@@ -16,6 +17,13 @@ class UsersController extends Controller {
             'results'    => [],
             'pagination' => [ 'more' => false ],
         ];
+
+        $mailboxId = request()->input( 'mailbox_id' );
+        $mailbox   = Mailbox::find( $mailboxId );
+        if ( $mailbox === null ) {
+            return Response::json( $response );
+        }
+
 
         $allTeams = [];
         if ( class_exists( Teams::class ) ) {
@@ -32,6 +40,10 @@ class UsersController extends Controller {
             if ( ! str_contains( strtoupper( $team->getFirstName() ), $query ) ) {
                 continue;
             }
+            if ( ! $mailbox->userHasAccess( $team->id ) ) {
+                continue;
+            }
+
             $response['results'][] = [
                 'id'   => $team->id,
                 'text' => 'Team: ' . $team->getFirstName(),
@@ -41,9 +53,10 @@ class UsersController extends Controller {
         /** @var User $user */
         foreach ( $allUsers as $user ) {
             if ( ! str_contains( strtoupper( $user->getFullName() ), $query ) && ! str_contains( strtoupper( $user->email ), $query ) ) {
-                {
-                    continue;
-                }
+                continue;
+            }
+            if ( ! $mailbox->userHasAccess( $user->id ) ) {
+                continue;
             }
             $response['results'][] = [
                 'id'   => $user->id,
@@ -63,9 +76,14 @@ class UsersController extends Controller {
             return Response::json( [ 'status' => 'error', 'message' => 'User not found' ] );
         }
 
-
         /** @var Conversation $conversation */
-        $conversation   = Conversation::find( $conversationId );
+        $conversation = Conversation::find( $conversationId );
+
+        $mailbox = $conversation->mailbox()->first();
+        if ( $mailbox->userHasAccess( $userId ) === false ) {
+            return Response::json( [ 'status' => 'error', 'message' => 'User not allowed' ] );
+        }
+
         $connectedUsers = $conversation->getMeta( 'internal_conversations.users', [] );
         if ( in_array( (string) $userId, $connectedUsers ) ) {
             return Response::json( [ 'status' => 'success' ] );
@@ -84,7 +102,7 @@ class UsersController extends Controller {
         $conversation = Conversation::find( $conversationId );
 
         $mailbox = $conversation->mailbox()->first();
-        $users   = $mailbox->usersAssignable( true );
+        $users   = $mailbox->usersAssignable();
 
 
         $connectedUsers = $conversation->getMeta( 'internal_conversations.users', [] );
