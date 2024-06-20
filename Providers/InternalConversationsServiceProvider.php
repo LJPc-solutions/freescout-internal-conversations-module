@@ -220,10 +220,10 @@ class InternalConversationsServiceProvider extends ServiceProvider {
                 $teamsForUser = User::whereRaw( "last_name = '" . Teams::TEAM_USER_LAST_NAME . "' and email like '" . Teams::TEAM_USER_EMAIL_PREFIX . "%' and JSON_CONTAINS(emails,'\"$user_id\"','$')" )->get();
                 $teamIds      = $teamsForUser->pluck( 'id' )->toArray();
             }
-            $rawSqlBuilder = "JSON_CONTAINS(meta, '\"$user_id\"', '$.\"internal_conversations.users\"')";
+            $rawSqlBuilder = "JSON_CONTAINS(`conversations`.meta, '\"$user_id\"', '$.\"internal_conversations.users\"')";
 
             foreach ( $teamIds as $teamId ) {
-                $rawSqlBuilder .= " OR JSON_CONTAINS(meta, '\"$teamId\"', '$.\"internal_conversations.users\"')";
+                $rawSqlBuilder .= " OR JSON_CONTAINS(`conversations`.meta, '\"$teamId\"', '$.\"internal_conversations.users\"')";
             }
 
             if ( $folder->type == Folder::TYPE_DRAFTS ) {
@@ -302,7 +302,7 @@ class InternalConversationsServiceProvider extends ServiceProvider {
             }
 
 
-            $allowedConversations = $query_conversations->where( 'type', $customType )->whereRaw( $rawSqlBuilder )->pluck( 'id' )->toArray();
+            $allowedConversations = $query_conversations->where( 'conversations.type', $customType )->whereRaw( $rawSqlBuilder )->pluck( 'id' )->toArray();
 
             if ( count( $allowedConversations ) > 0 ) {
                 $query->whereRaw( "(`conversations`.type != $customType OR `conversations`.id IN (" . implode( ',', $allowedConversations ) . "))" );
