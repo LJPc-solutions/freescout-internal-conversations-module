@@ -109,6 +109,21 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						if ( ! in_array( (string) auth()->user()->id, $connectedUsers ) ) {
 								$connectedUsers[] = (string) auth()->user()->id;
 						}
+						
+						// Check for mentioned users in the message body
+						if ( class_exists( 'Modules\Mentions\Providers\MentionsServiceProvider' ) ) {
+								$body = $request->get('body', '');
+								if ( $body ) {
+										$mentionedUsers = MentionsServiceProvider::getMentionedUsers( $body );
+										foreach ( $mentionedUsers as $userId ) {
+												// Check if user has mailbox access
+												if ( $mailbox->userHasAccess( $userId ) && ! in_array( (string) $userId, $connectedUsers ) ) {
+														$connectedUsers[] = (string) $userId;
+												}
+										}
+								}
+						}
+						
 						$conversation->setMeta( 'internal_conversations.users', $connectedUsers );
 						
 						// Handle public conversation setting
