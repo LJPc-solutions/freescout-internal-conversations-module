@@ -3,6 +3,7 @@
 namespace Modules\InternalConversations\Providers;
 
 use App\Conversation;
+use App\Subscription;
 use App\Thread;
 use App\User;
 
@@ -58,6 +59,9 @@ class ThumbsUpProvider {
             $thread->setMeta( 'ic.thumbs_up', $meta );
 
             $thread->save();
+            
+            // Trigger action for thumbs up
+            \Eventy::action('internal_conversation.thumbs_up', $conversation, $thread, $userId);
         } else if ( $request->ic_action === 'undo' ) {
             $meta = $thread->getMeta( 'ic.thumbs_up', [] );
             if ( isset( $meta[ $userId ] ) ) {

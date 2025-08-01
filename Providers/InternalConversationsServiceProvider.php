@@ -17,6 +17,7 @@ use Modules\Teams\Providers\TeamsServiceProvider as Teams;
 class InternalConversationsServiceProvider extends ServiceProvider {
 		const EVENT_IC_NEW_MESSAGE = 100;
 		const EVENT_IC_NEW_REPLY = 101;
+		const EVENT_IC_THUMBS_UP = 102;
 
 		/**
 		 * Indicates if loading of the provider is deferred.
@@ -416,12 +417,27 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 		}
 
 		private function registerEvents() {
+				// Add internal conversation events to subscription system
+				\Eventy::addFilter( 'subscription.events', function( $events ) {
+						$events[ self::EVENT_IC_NEW_MESSAGE ] = __( 'New internal conversation' );
+						$events[ self::EVENT_IC_NEW_REPLY ] = __( 'Reply to internal conversation' );
+						$events[ self::EVENT_IC_THUMBS_UP ] = __( 'Thumbs up on internal conversation' );
+						return $events;
+				}, 20 );
+
 				// Note added.
 				\Eventy::addAction( 'conversation.note_added', function ( Conversation $conversation, $thread ) {
 						if ( $conversation->isCustom() ) {
 								Subscription::registerEvent( self::EVENT_IC_NEW_REPLY, $conversation, $thread->created_by_user_id );
 						}
 				}, 20, 2 );
+				
+				// Thumbs up given.
+				\Eventy::addAction( 'internal_conversation.thumbs_up', function ( Conversation $conversation, $thread, $userId ) {
+						if ( $conversation->isCustom() ) {
+								Subscription::registerEvent( self::EVENT_IC_THUMBS_UP, $conversation, $userId );
+						}
+				}, 20, 3 );
 
 				\Eventy::addFilter( 'subscription.events_by_type', function ( $events, $event_type, $thread ) {
 						$connectedUsers = $thread->conversation->getMeta( 'internal_conversations.users', [] );
@@ -438,9 +454,19 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 				}, 20, 3 );
 
 				\Eventy::addFilter( 'subscription.filter_out', function ( $filter_out, $subscription, $thread ) {
-						if ( $subscription->event !== self::EVENT_IC_NEW_MESSAGE && $subscription->event !== self::EVENT_IC_NEW_REPLY ) {
+						if ( $subscription->event !== self::EVENT_IC_NEW_MESSAGE && $subscription->event !== self::EVENT_IC_NEW_REPLY && $subscription->event !== self::EVENT_IC_THUMBS_UP ) {
 								return $filter_out;
 						}
+						
+						// For thumbs up events, only filter out if user is not the thread author
+						if ( $subscription->event === self::EVENT_IC_THUMBS_UP ) {
+								if ( $thread && $thread->created_by_user_id == $subscription->user_id ) {
+										return false; // Don't filter out - this is the thread author
+								}
+								return $filter_out;
+						}
+						
+						// For other events, check if user is connected to the conversation
 						$connectedUsers = $thread->conversation->getMeta( 'internal_conversations.users', [] );
 
 						if ( ! in_array( $subscription->user_id, $connectedUsers ) ) {
@@ -451,9 +477,19 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 				}, 20, 3 );
 
 				\Eventy::addFilter( 'subscription.is_related_to_user', function ( $is_related, $subscription, $thread ) {
-						if ( $subscription->event !== self::EVENT_IC_NEW_MESSAGE && $subscription->event !== self::EVENT_IC_NEW_REPLY ) {
+						if ( $subscription->event !== self::EVENT_IC_NEW_MESSAGE && $subscription->event !== self::EVENT_IC_NEW_REPLY && $subscription->event !== self::EVENT_IC_THUMBS_UP ) {
 								return $is_related;
 						}
+						
+						// For thumbs up events, it's related if user is the thread author
+						if ( $subscription->event === self::EVENT_IC_THUMBS_UP ) {
+								if ( $thread && $thread->created_by_user_id == $subscription->user_id ) {
+										return true;
+								}
+								return $is_related;
+						}
+						
+						// For other events, check if user is connected to the conversation
 						$connectedUsers = $thread->conversation->getMeta( 'internal_conversations.users', [] );
 
 						if ( in_array( $subscription->user_id, $connectedUsers ) ) {
@@ -473,6 +509,27 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 												$users_to_notify[ Subscription::MEDIUM_MENU ][] = $user;
 												$users_to_notify[ Subscription::MEDIUM_MENU ]   = array_unique( $users_to_notify[ Subscription::MEDIUM_MENU ] );
 										}
+								}
+						}
+						
+						// Handle thumbs up notifications
+						if ( in_array( self::EVENT_IC_THUMBS_UP, $events ) ) {
+								// Notify the thread author
+								if ( $thread && $thread->created_by_user_id ) {
+										$threadAuthor = User::find( $thread->created_by_user_id );
+										if ( $threadAuthor ) {
+												$users_to_notify[ Subscription::MEDIUM_MENU ][] = $threadAuthor;
+												// Also send email if user has email notifications enabled for thumbs up
+												if ( $threadAuthor->isSubscribed( self::EVENT_IC_THUMBS_UP, Subscription::MEDIUM_EMAIL ) ) {
+														$users_to_notify[ Subscription::MEDIUM_EMAIL ][] = $threadAuthor;
+												}
+										}
+								}
+								
+								// Remove duplicates
+								$users_to_notify[ Subscription::MEDIUM_MENU ] = array_unique( $users_to_notify[ Subscription::MEDIUM_MENU ] );
+								if ( isset( $users_to_notify[ Subscription::MEDIUM_EMAIL ] ) ) {
+										$users_to_notify[ Subscription::MEDIUM_EMAIL ] = array_unique( $users_to_notify[ Subscription::MEDIUM_EMAIL ] );
 								}
 						}
 
