@@ -486,6 +486,19 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 
 						return $type;
 				}, 10, 1 );
+
+				\Eventy::addFilter( 'subscription.is_user_assignee', function ( $is_assignee, $subscription, $conversation ) {
+						if ( ! $conversation->isCustom() ) {
+								return $is_assignee;
+						}
+
+						$connectedUsers = $conversation->getMeta( 'internal_conversations.users', [] );
+						if ( in_array( $subscription->user_id, $connectedUsers ) ) {
+								return true;
+						}
+
+						return $is_assignee;
+				}, 20, 3 );
 		}
 
 		/**
