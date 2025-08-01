@@ -460,6 +460,19 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 				\Eventy::addAction( 'conversation.note_added', function ( Conversation $conversation, $thread ) {
 						if ( $conversation->isCustom() ) {
 								Subscription::registerEvent( self::EVENT_IC_NEW_REPLY, $conversation, $thread->created_by_user_id );
+								
+								// If conversation is public, add the user to connected users
+								$isPublic = $conversation->getMeta( 'internal_conversations.is_public', false );
+								if ( $isPublic && $thread->created_by_user_id ) {
+										$connectedUsers = $conversation->getMeta( 'internal_conversations.users', [] );
+										$userId = (string) $thread->created_by_user_id;
+										
+										if ( ! in_array( $userId, $connectedUsers ) ) {
+												$connectedUsers[] = $userId;
+												$conversation->setMeta( 'internal_conversations.users', $connectedUsers );
+												$conversation->save();
+										}
+								}
 						}
 				}, 20, 2 );
 				
