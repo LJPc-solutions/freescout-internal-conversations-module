@@ -19,13 +19,17 @@
     {
         "uri": "internal-conversations\/users\/remove_everyone",
         "name": "internal_conversations.users.remove_everyone"
+    },
+    {
+        "uri": "internal-conversations\/toggle-public",
+        "name": "internal_conversations.toggle_public"
     }
 ];
 
     if (typeof(laroute) != "undefined") {
         laroute.add_routes(module_routes);
     } else {
-        contole.log('laroute not initialized, can not add module routes:');
-        contole.log(module_routes);
+        console.log('laroute not initialized, can not add module routes:');
+        console.log(module_routes);
     }
 })();

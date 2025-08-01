@@ -15,6 +15,25 @@
             <div class="collapse-users panel-collapse collapse in">
                 <div class="panel-body">
                     <div class="sidebar-block-header2"><strong>{{ __("Users and teams") }}</strong> (<a data-toggle="collapse" href=".collapse-users">{{ __('close') }}</a>)</div>
+                    
+                    @php
+                        $isPublic = $conversation->getMeta('internal_conversations.is_public', false);
+                    @endphp
+                    
+                    <div class="public-conversation-toggle" style="margin-bottom: 15px; padding: 10px; background-color: #f5f5f5; border-radius: 4px;">
+                        <label style="display: flex; align-items: center; margin: 0;">
+                            <input type="checkbox" id="ic-public-toggle" data-conversation-id="{{ $conversation->id }}" @if($isPublic) checked @endif @if(!$canEditPublic) disabled @endif style="margin-right: 8px;">
+                            <span><strong>{{ __('Public conversation') }}</strong></span>
+                        </label>
+                        <small style="display: block; margin-top: 5px; color: #666;">
+                            @if($canEditPublic)
+                                {{ __('When enabled, all users with mailbox access can view this conversation') }}
+                            @else
+                                {{ __('This is a public conversation visible to all users with mailbox access') }}
+                            @endif
+                        </small>
+                    </div>
+                    
                     <ul class="sidebar-block-list users-list">
                         @foreach ($followers as $follower)
                             <li>

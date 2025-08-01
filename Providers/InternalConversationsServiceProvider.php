@@ -110,6 +110,11 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 								$connectedUsers[] = (string) auth()->user()->id;
 						}
 						$conversation->setMeta( 'internal_conversations.users', $connectedUsers );
+						
+						// Handle public conversation setting
+						$isPublic = $request->has('internal_conversation_is_public');
+						$conversation->setMeta( 'internal_conversations.is_public', $isPublic );
+						
 						$conversation->last_reply_at   = date( 'Y-m-d H:i:s' );
 						$conversation->last_reply_from = Conversation::PERSON_USER;
 						$conversation->save();
@@ -130,6 +135,11 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						$users = $mailbox->usersAssignable( true );
 
 						$connectedUserIds = $conversation->getMeta( 'internal_conversations.users', [] );
+						$isPublic = $conversation->getMeta( 'internal_conversations.is_public', false );
+						
+						// Check if current user has edit permission
+						$currentUserId = auth()->user()->id;
+						$canEditPublic = in_array( (string) $currentUserId, $connectedUserIds );
 
 						// Add followers first.
 						foreach ( $users as $i => $user ) {
@@ -152,6 +162,7 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						echo \View::make( 'internalconversations::partials/sidebar', [
 								'conversation' => $conversation,
 								'followers'    => $followers,
+								'canEditPublic' => $canEditPublic,
 						] )->render();
 				}, 10, 1 );
 
@@ -172,6 +183,9 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						if ( $folder->type == Folder::TYPE_DRAFTS ) {
 								$rawSqlBuilder .= ' OR (`conversations`.created_by_user_id = ' . $user_id . ' AND `conversations`.state = ' . Conversation::STATE_DRAFT . ')';
 						}
+						
+						// Include public conversations
+						$rawSqlBuilder .= " OR JSON_EXTRACT(meta, '$.\"internal_conversations.is_public\"') = 'true'";
 
 
 						if ( $folder->type == Folder::TYPE_MINE ) {
@@ -230,6 +244,9 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						if ( $folder->type == Folder::TYPE_DRAFTS ) {
 								$rawSqlBuilder .= ' OR (`conversations`.created_by_user_id = ' . $user_id . ' AND `conversations`.state = ' . Conversation::STATE_DRAFT . ')';
 						}
+						
+						// Include public conversations
+						$rawSqlBuilder .= " OR JSON_EXTRACT(`conversations`.meta, '$.\"internal_conversations.is_public\"') = 'true'";
 
 
 						if ( is_int( $user_id ) ) {
@@ -328,6 +345,9 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						foreach ( $teamIds as $teamId ) {
 								$rawSqlBuilder .= " OR JSON_CONTAINS(`conversations`.meta, '\"$teamId\"', '$.\"internal_conversations.users\"')";
 						}
+						
+						// Include public conversations
+						$rawSqlBuilder .= " OR JSON_EXTRACT(`conversations`.meta, '$.\"internal_conversations.is_public\"') = 'true'";
 
 						$query_conversations  = Conversation::where( 'state', Conversation::STATE_PUBLISHED );
 						$allowedConversations = $query_conversations->where( 'type', $customType )->whereRaw( $rawSqlBuilder )->pluck( 'id' )->toArray();
@@ -346,6 +366,17 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 								return;
 						}
 						$user_id = auth()->user()->id;
+						
+						// Check if conversation is public
+						$isPublic = $conversation->getMeta( 'internal_conversations.is_public', false );
+						if ( $isPublic ) {
+								// Public conversations are accessible to all users with mailbox access
+								$mailbox = $conversation->mailbox;
+								if ( $mailbox && $mailbox->userHasAccess( $user_id ) ) {
+										return; // Allow access
+								}
+						}
+						
 						//redirect away if not allowed
 						$teamIds = [];
 						if ( class_exists( Teams::class ) ) {
@@ -466,6 +497,16 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 								return $filter_out;
 						}
 						
+						// Check if conversation is public
+						$isPublic = $thread->conversation->getMeta( 'internal_conversations.is_public', false );
+						if ( $isPublic ) {
+								// For public conversations, check if user has mailbox access
+								$mailbox = $thread->conversation->mailbox;
+								if ( $mailbox && $mailbox->userHasAccess( $subscription->user_id ) ) {
+										return false; // Allow notifications for public conversations
+								}
+						}
+						
 						// For other events, check if user is connected to the conversation
 						$connectedUsers = $thread->conversation->getMeta( 'internal_conversations.users', [] );
 
@@ -489,6 +530,16 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 								return $is_related;
 						}
 						
+						// Check if conversation is public
+						$isPublic = $thread->conversation->getMeta( 'internal_conversations.is_public', false );
+						if ( $isPublic ) {
+								// For public conversations, check if user has mailbox access
+								$mailbox = $thread->conversation->mailbox;
+								if ( $mailbox && $mailbox->userHasAccess( $subscription->user_id ) ) {
+										return true; // User is related to public conversations they have access to
+								}
+						}
+						
 						// For other events, check if user is connected to the conversation
 						$connectedUsers = $thread->conversation->getMeta( 'internal_conversations.users', [] );
 
@@ -502,12 +553,28 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 				// Always show @mentions notification in the menu.
 				\Eventy::addFilter( 'subscription.users_to_notify', function ( $users_to_notify, $event_type, $events, $thread ) {
 						if ( in_array( self::EVENT_IC_NEW_MESSAGE, $events ) || in_array( self::EVENT_IC_NEW_REPLY, $events ) ) {
-								$connectedUsers = $thread->conversation->getMeta( 'internal_conversations.users', [] );
-								if ( count( $connectedUsers ) > 0 ) {
-										$users = User::whereIn( 'id', $connectedUsers )->get();
-										foreach ( $users as $user ) {
-												$users_to_notify[ Subscription::MEDIUM_MENU ][] = $user;
-												$users_to_notify[ Subscription::MEDIUM_MENU ]   = array_unique( $users_to_notify[ Subscription::MEDIUM_MENU ] );
+								// Check if conversation is public
+								$isPublic = $thread->conversation->getMeta( 'internal_conversations.is_public', false );
+								
+								if ( $isPublic ) {
+										// For public conversations, notify all users with mailbox access
+										$mailbox = $thread->conversation->mailbox;
+										if ( $mailbox ) {
+												$users = $mailbox->usersAssignable( true );
+												foreach ( $users as $user ) {
+														$users_to_notify[ Subscription::MEDIUM_MENU ][] = $user;
+												}
+												$users_to_notify[ Subscription::MEDIUM_MENU ] = array_unique( $users_to_notify[ Subscription::MEDIUM_MENU ] );
+										}
+								} else {
+										// For private conversations, only notify connected users
+										$connectedUsers = $thread->conversation->getMeta( 'internal_conversations.users', [] );
+										if ( count( $connectedUsers ) > 0 ) {
+												$users = User::whereIn( 'id', $connectedUsers )->get();
+												foreach ( $users as $user ) {
+														$users_to_notify[ Subscription::MEDIUM_MENU ][] = $user;
+														$users_to_notify[ Subscription::MEDIUM_MENU ]   = array_unique( $users_to_notify[ Subscription::MEDIUM_MENU ] );
+												}
 										}
 								}
 						}

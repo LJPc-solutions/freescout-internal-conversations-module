@@ -158,4 +158,30 @@ class UsersController extends Controller {
         return Response::json( [ 'status' => 'success', 'connected_users' => $connectedUsers ] );
     }
 
+    public function togglePublic() {
+        $conversationId = request()->input( 'conversation_id' );
+        $isPublic = request()->input( 'is_public' );
+
+        /** @var Conversation $conversation */
+        $conversation = Conversation::find( $conversationId );
+        
+        if ( $conversation === null || ! $conversation->isCustom() ) {
+            return Response::json( [ 'status' => 'error', 'message' => 'Conversation not found' ] );
+        }
+        
+        // Check if user has permission to modify this conversation
+        $userId = auth()->user()->id;
+        $connectedUsers = $conversation->getMeta( 'internal_conversations.users', [] );
+        
+        if ( ! in_array( (string) $userId, $connectedUsers ) ) {
+            return Response::json( [ 'status' => 'error', 'message' => 'Permission denied' ] );
+        }
+        
+        // Update public status
+        $conversation->setMeta( 'internal_conversations.is_public', $isPublic );
+        $conversation->save();
+        
+        return Response::json( [ 'status' => 'success', 'is_public' => $isPublic ] );
+    }
+
 }

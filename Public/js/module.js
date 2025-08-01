@@ -167,6 +167,12 @@ $(document).ready(function () {
 $(document).ready(function () {
     $('.ic-user-item').click(function (e) {
         e.preventDefault();
+        
+        // Check if the conversation is public - if so, users list should be disabled
+        if ($('#ic-public-toggle').is(':checked')) {
+            showFloatingAlert('info', 'User access is not applicable for public conversations');
+            return;
+        }
 
         const buttons = $(this);
         const isSubscribed = $(this).hasClass('ic-user-subscribed');
@@ -200,6 +206,13 @@ $(document).ready(function () {
 
     $('#add-everyone').click(function (e) {
         e.preventDefault();
+        
+        // Check if the conversation is public
+        if ($('#ic-public-toggle').is(':checked')) {
+            showFloatingAlert('info', 'User access is not applicable for public conversations');
+            return;
+        }
+        
         if (!confirm('Are you sure you want to add everyone to this conversation?')) return;
         fsAjax({
                 conversation_id: getGlobalAttr('conversation_id'),
@@ -218,6 +231,13 @@ $(document).ready(function () {
 
     $('#remove-everyone').click(function (e) {
         e.preventDefault();
+        
+        // Check if the conversation is public
+        if ($('#ic-public-toggle').is(':checked')) {
+            showFloatingAlert('info', 'User access is not applicable for public conversations');
+            return;
+        }
+        
         if (!confirm('Are you sure you want to remove everyone from this conversation?')) return;
         fsAjax({
                 conversation_id: getGlobalAttr('conversation_id'),
@@ -237,4 +257,45 @@ $(document).ready(function () {
             }, true
         );
     });
+    
+    // Handle public conversation toggle
+    $('#ic-public-toggle').change(function(e) {
+        var checkbox = $(this);
+        var conversationId = checkbox.data('conversation-id');
+        var isPublic = checkbox.is(':checked');
+        
+        fsAjax({
+                conversation_id: conversationId,
+                is_public: isPublic
+            },
+            laroute.route('internal_conversations.toggle_public'),
+            function (response) {
+                if (isAjaxSuccess(response)) {
+                    showFloatingAlert('success', isPublic ? 'Conversation is now public' : 'Conversation is now private');
+                    
+                    // Update UI to reflect public status
+                    if (isPublic) {
+                        $('.users-list').css('opacity', '0.5');
+                        $('.button-group').css('opacity', '0.5');
+                        $('.sidebar-block-header2').after('<div class="public-notice text-muted" style="margin-bottom: 10px;"><em>All users with mailbox access can view this conversation</em></div>');
+                    } else {
+                        $('.users-list').css('opacity', '1');
+                        $('.button-group').css('opacity', '1');
+                        $('.public-notice').remove();
+                    }
+                } else {
+                    // Revert checkbox state on error
+                    checkbox.prop('checked', !isPublic);
+                    showAjaxResult(response);
+                }
+            }, true
+        );
+    });
+    
+    // On page load, check if conversation is public and update UI
+    if ($('#ic-public-toggle').is(':checked')) {
+        $('.users-list').css('opacity', '0.5');
+        $('.button-group').css('opacity', '0.5');
+        $('.sidebar-block-header2').after('<div class="public-notice text-muted" style="margin-bottom: 10px;"><em>All users with mailbox access can view this conversation</em></div>');
+    }
 });
