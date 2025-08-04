@@ -103,6 +103,8 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 								}
 								if ( ! in_array( (string) $user, $connectedUsers ) ) {
 										$connectedUsers[] = (string) $user;
+										// Register subscription for selected user to receive reply notifications
+										Subscription::registerEvent( self::EVENT_IC_NEW_REPLY, $conversation, $user );
 								}
 						}
 
@@ -119,6 +121,8 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 												// Check if user has mailbox access
 												if ( $mailbox->userHasAccess( $userId ) && ! in_array( (string) $userId, $connectedUsers ) ) {
 														$connectedUsers[] = (string) $userId;
+														// Register subscription for mentioned user to receive reply notifications
+														Subscription::registerEvent( self::EVENT_IC_NEW_REPLY, $conversation, $userId );
 												}
 										}
 								}
@@ -438,6 +442,8 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 												continue;
 										}
 										$connectedUsers[] = (string) $userId;
+										// Register subscription for mentioned user to receive reply notifications
+										Subscription::registerEvent( self::EVENT_IC_NEW_REPLY, $conversation, $userId );
 								}
 								$conversation->setMeta( 'internal_conversations.users', $connectedUsers );
 								$conversation->save();
@@ -488,6 +494,8 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 												// Ensure public state is preserved
 												$conversation->setMeta( 'internal_conversations.is_public', true );
 												$conversation->save();
+												// Register subscription for the user who replied
+												Subscription::registerEvent( self::EVENT_IC_NEW_REPLY, $conversation, $thread->created_by_user_id );
 										}
 								}
 						}
@@ -519,12 +527,12 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 								return $filter_out;
 						}
 						
-						// For thumbs up events, only filter out if user is not the thread author
+						// For thumbs up events, only allow the thread author to receive notifications
 						if ( $subscription->event === self::EVENT_IC_THUMBS_UP ) {
 								if ( $thread && $thread->created_by_user_id == $subscription->user_id ) {
 										return false; // Don't filter out - this is the thread author
 								}
-								return $filter_out;
+								return true; // Filter out everyone else
 						}
 						
 						// Check if conversation is public

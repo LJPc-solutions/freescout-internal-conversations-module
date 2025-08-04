@@ -91,6 +91,9 @@ class UsersController extends Controller {
         $connectedUsers[] = (string) $userId;
         $conversation->setMeta( 'internal_conversations.users', $connectedUsers );
         $conversation->save();
+        
+        // Register subscription for the added user
+        \App\Subscription::registerEvent( \Modules\InternalConversations\Providers\InternalConversationsServiceProvider::EVENT_IC_NEW_REPLY, $conversation, $userId );
 
         return Response::json( [ 'status' => 'success', 'connected_users' => $connectedUsers ] );
     }
@@ -111,6 +114,8 @@ class UsersController extends Controller {
                 continue;
             }
             $connectedUsers[] = (string) $user->id;
+            // Register subscription for the added user
+            \App\Subscription::registerEvent( \Modules\InternalConversations\Providers\InternalConversationsServiceProvider::EVENT_IC_NEW_REPLY, $conversation, $user->id );
         }
         $conversation->setMeta( 'internal_conversations.users', $connectedUsers );
         $conversation->save();
