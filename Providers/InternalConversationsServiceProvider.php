@@ -485,6 +485,8 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 										if ( ! in_array( $userId, $connectedUsers ) ) {
 												$connectedUsers[] = $userId;
 												$conversation->setMeta( 'internal_conversations.users', $connectedUsers );
+												// Ensure public state is preserved
+												$conversation->setMeta( 'internal_conversations.is_public', true );
 												$conversation->save();
 										}
 								}
