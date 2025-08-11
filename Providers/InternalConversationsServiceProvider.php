@@ -6,6 +6,7 @@ use App\Conversation;
 use App\ConversationFolder;
 use App\Folder;
 use App\Mailbox;
+use App\Notifications\WebsiteNotification;
 use App\Subscription;
 use App\Thread;
 use App\User;
@@ -17,7 +18,6 @@ use Modules\Teams\Providers\TeamsServiceProvider as Teams;
 class InternalConversationsServiceProvider extends ServiceProvider {
 		const EVENT_IC_NEW_MESSAGE = 100;
 		const EVENT_IC_NEW_REPLY = 101;
-		const EVENT_IC_THUMBS_UP = 102;
 
 		/**
 		 * Indicates if loading of the provider is deferred.
@@ -111,10 +111,10 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						if ( ! in_array( (string) auth()->user()->id, $connectedUsers ) ) {
 								$connectedUsers[] = (string) auth()->user()->id;
 						}
-						
+
 						// Check for mentioned users in the message body
 						if ( class_exists( 'Modules\Mentions\Providers\MentionsServiceProvider' ) ) {
-								$body = $request->get('body', '');
+								$body = $request->get( 'body', '' );
 								if ( $body ) {
 										$mentionedUsers = MentionsServiceProvider::getMentionedUsers( $body );
 										foreach ( $mentionedUsers as $userId ) {
@@ -127,13 +127,9 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 										}
 								}
 						}
-						
+
 						$conversation->setMeta( 'internal_conversations.users', $connectedUsers );
-						
-						// Handle public conversation setting
-						$isPublic = $request->has('internal_conversation_is_public');
-						$conversation->setMeta( 'internal_conversations.is_public', $isPublic );
-						
+
 						$conversation->last_reply_at   = date( 'Y-m-d H:i:s' );
 						$conversation->last_reply_from = Conversation::PERSON_USER;
 						$conversation->save();
@@ -154,8 +150,8 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						$users = $mailbox->usersAssignable( true );
 
 						$connectedUserIds = $conversation->getMeta( 'internal_conversations.users', [] );
-						$isPublic = $conversation->getMeta( 'internal_conversations.is_public', false );
-						
+						$isPublic         = $conversation->getMeta( 'internal_conversations.is_public', false );
+
 						// Check if current user has edit permission
 						$currentUserId = auth()->user()->id;
 						$canEditPublic = in_array( (string) $currentUserId, $connectedUserIds );
@@ -179,8 +175,8 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						}
 
 						echo \View::make( 'internalconversations::partials/sidebar', [
-								'conversation' => $conversation,
-								'followers'    => $followers,
+								'conversation'  => $conversation,
+								'followers'     => $followers,
 								'canEditPublic' => $canEditPublic,
 						] )->render();
 				}, 10, 1 );
@@ -202,7 +198,7 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						if ( $folder->type == Folder::TYPE_DRAFTS ) {
 								$rawSqlBuilder .= ' OR (`conversations`.created_by_user_id = ' . $user_id . ' AND `conversations`.state = ' . Conversation::STATE_DRAFT . ')';
 						}
-						
+
 						// Include public conversations
 						$rawSqlBuilder .= " OR JSON_EXTRACT(meta, '$.\"internal_conversations.is_public\"') = 'true'";
 
@@ -263,7 +259,7 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						if ( $folder->type == Folder::TYPE_DRAFTS ) {
 								$rawSqlBuilder .= ' OR (`conversations`.created_by_user_id = ' . $user_id . ' AND `conversations`.state = ' . Conversation::STATE_DRAFT . ')';
 						}
-						
+
 						// Include public conversations
 						$rawSqlBuilder .= " OR JSON_EXTRACT(`conversations`.meta, '$.\"internal_conversations.is_public\"') = 'true'";
 
@@ -364,7 +360,7 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						foreach ( $teamIds as $teamId ) {
 								$rawSqlBuilder .= " OR JSON_CONTAINS(`conversations`.meta, '\"$teamId\"', '$.\"internal_conversations.users\"')";
 						}
-						
+
 						// Include public conversations
 						$rawSqlBuilder .= " OR JSON_EXTRACT(`conversations`.meta, '$.\"internal_conversations.is_public\"') = 'true'";
 
@@ -380,12 +376,18 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						return $query;
 				}, 10, 3 );
 
+				\Eventy::addAction('javascript', function() {
+						if (\Route::is('conversations.create')) {
+								echo 'mentionsInitConv();';
+						}
+				});
+
 				\Eventy::addAction( 'conversation.view.start', function ( Conversation $conversation, $request ) {
 						if ( ! $conversation->isCustom() ) {
 								return;
 						}
 						$user_id = auth()->user()->id;
-						
+
 						// Check if conversation is public
 						$isPublic = $conversation->getMeta( 'internal_conversations.is_public', false );
 						if ( $isPublic ) {
@@ -395,7 +397,7 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 										return; // Allow access
 								}
 						}
-						
+
 						//redirect away if not allowed
 						$teamIds = [];
 						if ( class_exists( Teams::class ) ) {
@@ -470,10 +472,10 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 
 		private function registerEvents() {
 				// Add internal conversation events to subscription system
-				\Eventy::addFilter( 'subscription.events', function( $events ) {
+				\Eventy::addFilter( 'subscription.events', function ( $events ) {
 						$events[ self::EVENT_IC_NEW_MESSAGE ] = __( 'New internal conversation' );
-						$events[ self::EVENT_IC_NEW_REPLY ] = __( 'Reply to internal conversation' );
-						$events[ self::EVENT_IC_THUMBS_UP ] = __( 'Thumbs up on internal conversation' );
+						$events[ self::EVENT_IC_NEW_REPLY ]   = __( 'Reply to internal conversation' );
+
 						return $events;
 				}, 20 );
 
@@ -481,13 +483,13 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 				\Eventy::addAction( 'conversation.note_added', function ( Conversation $conversation, $thread ) {
 						if ( $conversation->isCustom() ) {
 								Subscription::registerEvent( self::EVENT_IC_NEW_REPLY, $conversation, $thread->created_by_user_id );
-								
+
 								// If conversation is public, add the user to connected users
 								$isPublic = $conversation->getMeta( 'internal_conversations.is_public', false );
 								if ( $isPublic && $thread->created_by_user_id ) {
 										$connectedUsers = $conversation->getMeta( 'internal_conversations.users', [] );
-										$userId = (string) $thread->created_by_user_id;
-										
+										$userId         = (string) $thread->created_by_user_id;
+
 										if ( ! in_array( $userId, $connectedUsers ) ) {
 												$connectedUsers[] = $userId;
 												$conversation->setMeta( 'internal_conversations.users', $connectedUsers );
@@ -500,13 +502,23 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 								}
 						}
 				}, 20, 2 );
-				
+
 				// Thumbs up given.
 				\Eventy::addAction( 'internal_conversation.thumbs_up', function ( Conversation $conversation, $thread, $userId ) {
-						if ( $conversation->isCustom() ) {
-								Subscription::registerEvent( self::EVENT_IC_THUMBS_UP, $conversation, $userId );
-						}
+						$website_notification = new WebsiteNotification( $conversation, $thread, [ 'type' => 'thumbs_up', 'user_id' => $userId ] );
+						/** @var Thread $thread */
+						\Notification::send( [ $thread->created_by_user()->first() ], $website_notification );
 				}, 20, 3 );
+
+				\Eventy::addFilter( 'web_notification.header', function ( $text, $notification_data ) {
+						if ( isset( $notification_data['data']['type'] ) && $notification_data['data']['type'] === 'thumbs_up' ) {
+								/** @var User $user */
+								$user = User::find( $notification_data['data']['user_id'] );
+								$text = 'You received a thumbs up on an internal conversation by ' . $user->getFirstName();
+						}
+
+						return $text;
+				}, 10, 2 );
 
 				\Eventy::addFilter( 'subscription.events_by_type', function ( $events, $event_type, $thread ) {
 						$connectedUsers = $thread->conversation->getMeta( 'internal_conversations.users', [] );
@@ -523,18 +535,10 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 				}, 20, 3 );
 
 				\Eventy::addFilter( 'subscription.filter_out', function ( $filter_out, $subscription, $thread ) {
-						if ( $subscription->event !== self::EVENT_IC_NEW_MESSAGE && $subscription->event !== self::EVENT_IC_NEW_REPLY && $subscription->event !== self::EVENT_IC_THUMBS_UP ) {
+						if ( $subscription->event !== self::EVENT_IC_NEW_MESSAGE && $subscription->event !== self::EVENT_IC_NEW_REPLY ) {
 								return $filter_out;
 						}
-						
-						// For thumbs up events, only allow the thread author to receive notifications
-						if ( $subscription->event === self::EVENT_IC_THUMBS_UP ) {
-								if ( $thread && $thread->created_by_user_id == $subscription->user_id ) {
-										return false; // Don't filter out - this is the thread author
-								}
-								return true; // Filter out everyone else
-						}
-						
+
 						// Check if conversation is public
 						$isPublic = $thread->conversation->getMeta( 'internal_conversations.is_public', false );
 						if ( $isPublic ) {
@@ -544,7 +548,7 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 										return false; // Allow notifications for public conversations
 								}
 						}
-						
+
 						// For other events, check if user is connected to the conversation
 						$connectedUsers = $thread->conversation->getMeta( 'internal_conversations.users', [] );
 
@@ -556,18 +560,10 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 				}, 20, 3 );
 
 				\Eventy::addFilter( 'subscription.is_related_to_user', function ( $is_related, $subscription, $thread ) {
-						if ( $subscription->event !== self::EVENT_IC_NEW_MESSAGE && $subscription->event !== self::EVENT_IC_NEW_REPLY && $subscription->event !== self::EVENT_IC_THUMBS_UP ) {
+						if ( $subscription->event !== self::EVENT_IC_NEW_MESSAGE && $subscription->event !== self::EVENT_IC_NEW_REPLY ) {
 								return $is_related;
 						}
-						
-						// For thumbs up events, it's related if user is the thread author
-						if ( $subscription->event === self::EVENT_IC_THUMBS_UP ) {
-								if ( $thread && $thread->created_by_user_id == $subscription->user_id ) {
-										return true;
-								}
-								return $is_related;
-						}
-						
+
 						// Check if conversation is public
 						$isPublic = $thread->conversation->getMeta( 'internal_conversations.is_public', false );
 						if ( $isPublic ) {
@@ -577,7 +573,7 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 										return true; // User is related to public conversations they have access to
 								}
 						}
-						
+
 						// For other events, check if user is connected to the conversation
 						$connectedUsers = $thread->conversation->getMeta( 'internal_conversations.users', [] );
 
@@ -593,7 +589,7 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						if ( in_array( self::EVENT_IC_NEW_MESSAGE, $events ) || in_array( self::EVENT_IC_NEW_REPLY, $events ) ) {
 								// Check if conversation is public
 								$isPublic = $thread->conversation->getMeta( 'internal_conversations.is_public', false );
-								
+
 								if ( $isPublic ) {
 										// For public conversations, notify all users with mailbox access
 										$mailbox = $thread->conversation->mailbox;
@@ -614,27 +610,6 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 														$users_to_notify[ Subscription::MEDIUM_MENU ]   = array_unique( $users_to_notify[ Subscription::MEDIUM_MENU ] );
 												}
 										}
-								}
-						}
-						
-						// Handle thumbs up notifications
-						if ( in_array( self::EVENT_IC_THUMBS_UP, $events ) ) {
-								// Notify the thread author
-								if ( $thread && $thread->created_by_user_id ) {
-										$threadAuthor = User::find( $thread->created_by_user_id );
-										if ( $threadAuthor ) {
-												$users_to_notify[ Subscription::MEDIUM_MENU ][] = $threadAuthor;
-												// Also send email if user has email notifications enabled for thumbs up
-												if ( $threadAuthor->isSubscribed( self::EVENT_IC_THUMBS_UP, Subscription::MEDIUM_EMAIL ) ) {
-														$users_to_notify[ Subscription::MEDIUM_EMAIL ][] = $threadAuthor;
-												}
-										}
-								}
-								
-								// Remove duplicates
-								$users_to_notify[ Subscription::MEDIUM_MENU ] = array_unique( $users_to_notify[ Subscription::MEDIUM_MENU ] );
-								if ( isset( $users_to_notify[ Subscription::MEDIUM_EMAIL ] ) ) {
-										$users_to_notify[ Subscription::MEDIUM_EMAIL ] = array_unique( $users_to_notify[ Subscription::MEDIUM_EMAIL ] );
 								}
 						}
 

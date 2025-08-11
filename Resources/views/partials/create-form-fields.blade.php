@@ -17,9 +17,9 @@
 
 <div class="form-group custom-conv-fields">
     <label for="is_public" class="col-sm-2 control-label">{{ __('Public conversation') }}</label>
-    
+
     <div class="col-sm-9">
-        <div class="checkbox">
+        <div class="checkbox" style="padding:3px 0 0">
             <label>
                 <input type="checkbox" name="internal_conversation_is_public" id="internal_conversation_is_public" value="1" class="draft-changer">
                 {{ __('Make this conversation visible to all users with mailbox access') }}
