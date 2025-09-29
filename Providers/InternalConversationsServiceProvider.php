@@ -130,6 +130,13 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 
 						$conversation->setMeta( 'internal_conversations.users', $connectedUsers );
 
+						// Handle public conversation setting from form
+						if ( $request->has( 'internal_conversation_is_public' ) && $request->input( 'internal_conversation_is_public' ) ) {
+								$conversation->setMeta( 'internal_conversations.is_public', true );
+						} else {
+								$conversation->setMeta( 'internal_conversations.is_public', false );
+						}
+
 						$conversation->last_reply_at   = date( 'Y-m-d H:i:s' );
 						$conversation->last_reply_from = Conversation::PERSON_USER;
 						$conversation->save();
