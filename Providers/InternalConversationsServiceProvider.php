@@ -512,20 +512,34 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 
 				// Thumbs up given.
 				\Eventy::addAction( 'internal_conversation.thumbs_up', function ( Conversation $conversation, $thread, $userId ) {
-						$website_notification = new WebsiteNotification( $conversation, $thread, [ 'type' => 'thumbs_up', 'user_id' => $userId ] );
+						$website_notification = new WebsiteNotification( $conversation, $thread, [ 'type' => 'thumbs_up', 'user_id' => $userId, 'conversation_id' => $conversation->id ] );
 						/** @var Thread $thread */
 						\Notification::send( [ $thread->created_by_user()->first() ], $website_notification );
 				}, 20, 3 );
 
 				\Eventy::addFilter( 'web_notification.header', function ( $text, $notification_data ) {
-						if ( isset( $notification_data['data']['type'] ) && $notification_data['data']['type'] === 'thumbs_up' ) {
+						if ( isset( $notification_data['data']['type'] ) && $notification_data['data']['type'] === 'thumbs_up' && isset( $notification_data['data']['conversation_id'] ) ) {
+								/** @var Conversation $conversation */
+								$conversation = Conversation::find( $notification_data['data']['conversation_id'] );
 								/** @var User $user */
 								$user = User::find( $notification_data['data']['user_id'] );
-								$text = 'You received a thumbs up on an internal conversation by ' . $user->getFirstName();
+								$text = '<strong>' . $user->getFirstName() . '</strong> gave you a 👍 on a note on #' . $conversation->id;
 						}
 
 						return $text;
 				}, 10, 2 );
+
+				\Eventy::addFilter( 'web_notification.person', function ( $user, $notification_data ) {
+						if ( isset( $notification_data['data']['type'] ) && $notification_data['data']['type'] === 'thumbs_up' && isset( $notification_data['data']['user_id'] ) ) {
+								$newUser = User::find( $notification_data['data']['user_id'] );
+								if ( $newUser !== null ) {
+										return $newUser;
+								}
+						}
+
+						return $user;
+				}, 10, 2 );
+
 
 				\Eventy::addFilter( 'subscription.events_by_type', function ( $events, $event_type, $thread ) {
 						$connectedUsers = $thread->conversation->getMeta( 'internal_conversations.users', [] );
