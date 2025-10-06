@@ -383,11 +383,11 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						return $query;
 				}, 10, 3 );
 
-				\Eventy::addAction('javascript', function() {
-						if (\Route::is('conversations.create')) {
+				\Eventy::addAction( 'javascript', function () {
+						if ( \Route::is( 'conversations.create' ) ) {
 								echo 'mentionsInitConv();';
 						}
-				});
+				} );
 
 				\Eventy::addAction( 'conversation.view.start', function ( Conversation $conversation, $request ) {
 						if ( ! $conversation->isCustom() ) {
@@ -608,28 +608,12 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 				// Always show @mentions notification in the menu.
 				\Eventy::addFilter( 'subscription.users_to_notify', function ( $users_to_notify, $event_type, $events, $thread ) {
 						if ( in_array( self::EVENT_IC_NEW_MESSAGE, $events ) || in_array( self::EVENT_IC_NEW_REPLY, $events ) ) {
-								// Check if conversation is public
-								$isPublic = $thread->conversation->getMeta( 'internal_conversations.is_public', false );
-
-								if ( $isPublic ) {
-										// For public conversations, notify all users with mailbox access
-										$mailbox = $thread->conversation->mailbox;
-										if ( $mailbox ) {
-												$users = $mailbox->usersAssignable( true );
-												foreach ( $users as $user ) {
-														$users_to_notify[ Subscription::MEDIUM_MENU ][] = $user;
-												}
-												$users_to_notify[ Subscription::MEDIUM_MENU ] = array_unique( $users_to_notify[ Subscription::MEDIUM_MENU ] );
-										}
-								} else {
-										// For private conversations, only notify connected users
-										$connectedUsers = $thread->conversation->getMeta( 'internal_conversations.users', [] );
-										if ( count( $connectedUsers ) > 0 ) {
-												$users = User::whereIn( 'id', $connectedUsers )->get();
-												foreach ( $users as $user ) {
-														$users_to_notify[ Subscription::MEDIUM_MENU ][] = $user;
-														$users_to_notify[ Subscription::MEDIUM_MENU ]   = array_unique( $users_to_notify[ Subscription::MEDIUM_MENU ] );
-												}
+								$connectedUsers = $thread->conversation->getMeta( 'internal_conversations.users', [] );
+								if ( count( $connectedUsers ) > 0 ) {
+										$users = User::whereIn( 'id', $connectedUsers )->get();
+										foreach ( $users as $user ) {
+												$users_to_notify[ Subscription::MEDIUM_MENU ][] = $user;
+												$users_to_notify[ Subscription::MEDIUM_MENU ]   = array_unique( $users_to_notify[ Subscription::MEDIUM_MENU ] );
 										}
 								}
 						}
