@@ -128,15 +128,6 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 								}
 						}
 
-						$conversation->setMeta( 'internal_conversations.users', $connectedUsers );
-
-						// Handle public conversation setting from form
-						if ( $request->has( 'internal_conversation_is_public' ) && $request->input( 'internal_conversation_is_public' ) ) {
-								$conversation->setMeta( 'internal_conversations.is_public', true );
-						} else {
-								$conversation->setMeta( 'internal_conversations.is_public', false );
-						}
-
 						$conversation->last_reply_at   = date( 'Y-m-d H:i:s' );
 						$conversation->last_reply_from = Conversation::PERSON_USER;
 						$conversation->save();
@@ -455,6 +446,9 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 										Subscription::registerEvent( self::EVENT_IC_NEW_REPLY, $conversation, $userId );
 								}
 								$conversation->setMeta( 'internal_conversations.users', $connectedUsers );
+								// Ensure public state is preserved
+								$isPublic = $conversation->getMeta( 'internal_conversations.is_public', false );
+								$conversation->setMeta( 'internal_conversations.is_public', $isPublic );
 								$conversation->save();
 						}, 20, 2 );
 				}
@@ -560,16 +554,6 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 								return $filter_out;
 						}
 
-						// Check if conversation is public
-						$isPublic = $thread->conversation->getMeta( 'internal_conversations.is_public', false );
-						if ( $isPublic ) {
-								// For public conversations, check if user has mailbox access
-								$mailbox = $thread->conversation->mailbox;
-								if ( $mailbox && $mailbox->userHasAccess( $subscription->user_id ) ) {
-										return false; // Allow notifications for public conversations
-								}
-						}
-
 						// For other events, check if user is connected to the conversation
 						$connectedUsers = $thread->conversation->getMeta( 'internal_conversations.users', [] );
 
@@ -583,16 +567,6 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 				\Eventy::addFilter( 'subscription.is_related_to_user', function ( $is_related, $subscription, $thread ) {
 						if ( $subscription->event !== self::EVENT_IC_NEW_MESSAGE && $subscription->event !== self::EVENT_IC_NEW_REPLY ) {
 								return $is_related;
-						}
-
-						// Check if conversation is public
-						$isPublic = $thread->conversation->getMeta( 'internal_conversations.is_public', false );
-						if ( $isPublic ) {
-								// For public conversations, check if user has mailbox access
-								$mailbox = $thread->conversation->mailbox;
-								if ( $mailbox && $mailbox->userHasAccess( $subscription->user_id ) ) {
-										return true; // User is related to public conversations they have access to
-								}
 						}
 
 						// For other events, check if user is connected to the conversation
