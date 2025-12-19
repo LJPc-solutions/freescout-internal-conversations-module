@@ -52,10 +52,22 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 				} );
 
 				\Eventy::addAction( 'conversation.create_form.before_subject', function ( $conversation, $mailbox, $thread ) {
+						$users = [];
+						if ( $conversation && $conversation->type == Conversation::TYPE_CUSTOM ) {
+								$userIds = $conversation->getMeta( 'internal_conversations.users', [] );
+								foreach ( $userIds as $userId ) {
+										$user = User::find( $userId );
+										if ( $user ) {
+												$users[ $userId ] = $user->getFullName();
+										}
+								}
+						}
+
 						echo \View::make( 'internalconversations::partials/create-form-fields', [
 								'conversation' => $conversation,
 								'mailbox'      => $mailbox,
 								'thread'       => $thread,
+								'users'        => $users,
 						] )->render();
 				}, 10, 3 );
 

@@ -27,3 +27,11 @@
         </div>
     </div>
 </div>
+
+@if ($conversation && $conversation->type === \App\Conversation::TYPE_CUSTOM)
+    <script type="text/javascript" {!! \Helper::cspNonceAttr() !!}>
+        document.addEventListener("DOMContentLoaded", (event) => {
+            switchToNewPhoneInternalConversation();
+        });
+    </script>
+@endif
