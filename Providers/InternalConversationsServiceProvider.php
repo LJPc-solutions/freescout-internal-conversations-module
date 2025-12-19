@@ -6,14 +6,13 @@ use App\Conversation;
 use App\ConversationFolder;
 use App\Folder;
 use App\Mailbox;
-use App\Notifications\WebsiteNotification;
-use App\Subscription;
 use App\Thread;
 use App\User;
 use Illuminate\Database\Eloquent\Factory;
 use Illuminate\Support\ServiceProvider;
 use Modules\Mentions\Providers\MentionsServiceProvider;
 use Modules\Teams\Providers\TeamsServiceProvider as Teams;
+use Modules\InternalConversations\Helpers\InternalNotification;
 
 class InternalConversationsServiceProvider extends ServiceProvider {
 		const EVENT_IC_NEW_MESSAGE = 100;
@@ -43,6 +42,11 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 		 * Module hooks.
 		 */
 		public function hooks() {
+		// Register notification types
+		InternalNotification::registerType('thumbs_up', 'gave you a 👍 on a note on');
+		InternalNotification::registerType('new_conversation', 'started an internal conversation');
+		InternalNotification::registerType('new_reply', 'replied to an internal conversation');
+
 				\Eventy::addAction( 'conversation.new.conv_switch_buttons', function ( $mailbox ) {
 						echo \View::make( 'internalconversations::partials/conv-switch-button', [] )->render();
 				} );
@@ -89,8 +93,6 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 
 						$mailbox = $conversation->mailbox()->first();
 
-						Subscription::registerEvent( self::EVENT_IC_NEW_MESSAGE, $conversation, auth()->user()->id );
-
 						/**
 						 * @var Conversation $conversation
 						 */
@@ -103,8 +105,6 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 								}
 								if ( ! in_array( (string) $user, $connectedUsers ) ) {
 										$connectedUsers[] = (string) $user;
-										// Register subscription for selected user to receive reply notifications
-										Subscription::registerEvent( self::EVENT_IC_NEW_REPLY, $conversation, $user );
 								}
 						}
 
@@ -121,8 +121,6 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 												// Check if user has mailbox access
 												if ( $mailbox->userHasAccess( $userId ) && ! in_array( (string) $userId, $connectedUsers ) ) {
 														$connectedUsers[] = (string) $userId;
-														// Register subscription for mentioned user to receive reply notifications
-														Subscription::registerEvent( self::EVENT_IC_NEW_REPLY, $conversation, $userId );
 												}
 										}
 								}
@@ -451,8 +449,6 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 												continue;
 										}
 										$connectedUsers[] = (string) $userId;
-										// Register subscription for mentioned user to receive reply notifications
-										Subscription::registerEvent( self::EVENT_IC_NEW_REPLY, $conversation, $userId );
 								}
 								$conversation->setMeta( 'internal_conversations.users', $connectedUsers );
 								// Ensure public state is preserved
@@ -461,10 +457,6 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 								$conversation->save();
 						}, 20, 2 );
 				}
-
-				\Eventy::addAction( 'notifications_table.general.append', function ( $vars ) {
-						echo \View::make( 'internalconversations::partials/notifications_table', $vars )->render();
-				}, 20, 1 );
 
 				\Eventy::addAction( 'thread.before_save_from_request', function ( Thread $thread, $request ) {
 						$conversationId = $thread->conversation_id;
@@ -481,19 +473,9 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 		}
 
 		private function registerEvents() {
-				// Add internal conversation events to subscription system
-				\Eventy::addFilter( 'subscription.events', function ( $events ) {
-						$events[ self::EVENT_IC_NEW_MESSAGE ] = __( 'New internal conversation' );
-						$events[ self::EVENT_IC_NEW_REPLY ]   = __( 'Reply to internal conversation' );
-
-						return $events;
-				}, 20 );
-
 				// Note added.
 				\Eventy::addAction( 'conversation.note_added', function ( Conversation $conversation, $thread ) {
 						if ( $conversation->isCustom() ) {
-								Subscription::registerEvent( self::EVENT_IC_NEW_REPLY, $conversation, $thread->created_by_user_id );
-
 								// If conversation is public, add the user to connected users
 								$isPublic = $conversation->getMeta( 'internal_conversations.is_public', false );
 								if ( $isPublic && $thread->created_by_user_id ) {
@@ -506,103 +488,28 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 												// Ensure public state is preserved
 												$conversation->setMeta( 'internal_conversations.is_public', true );
 												$conversation->save();
-												// Register subscription for the user who replied
-												Subscription::registerEvent( self::EVENT_IC_NEW_REPLY, $conversation, $thread->created_by_user_id );
 										}
+								}
+
+								// Send notification to connected users
+								$actor = User::find($thread->created_by_user_id);
+								if ($actor) {
+										$isNewConversation = $conversation->threads()->count() <= 1;
+										$type = $isNewConversation ? 'new_conversation' : 'new_reply';
+										InternalNotification::sendToConnected($type, $actor, $conversation);
 								}
 						}
 				}, 20, 2 );
 
 				// Thumbs up given.
 				\Eventy::addAction( 'internal_conversation.thumbs_up', function ( Conversation $conversation, $thread, $userId ) {
-						$website_notification = new WebsiteNotification( $conversation, $thread, [ 'type' => 'thumbs_up', 'user_id' => $userId, 'conversation_id' => $conversation->id ] );
-						/** @var Thread $thread */
-						\Notification::send( [ $thread->created_by_user()->first() ], $website_notification );
-				}, 20, 3 );
+						$actor = User::find($userId);
+						$recipient = $thread->created_by_user()->first();
 
-				\Eventy::addFilter( 'web_notification.header', function ( $text, $notification_data ) {
-						if ( isset( $notification_data['data']['type'] ) && $notification_data['data']['type'] === 'thumbs_up' && isset( $notification_data['data']['conversation_id'] ) ) {
-								/** @var Conversation $conversation */
-								$conversation = Conversation::find( $notification_data['data']['conversation_id'] );
-								/** @var User $user */
-								$user = User::find( $notification_data['data']['user_id'] );
-								$text = '<strong>' . $user->getFirstName() . '</strong> gave you a 👍 on a note on #' . $conversation->id;
-						}
-
-						return $text;
-				}, 10, 2 );
-
-				\Eventy::addFilter( 'web_notification.person', function ( $user, $notification_data ) {
-						if ( isset( $notification_data['data']['type'] ) && $notification_data['data']['type'] === 'thumbs_up' && isset( $notification_data['data']['user_id'] ) ) {
-								$newUser = User::find( $notification_data['data']['user_id'] );
-								if ( $newUser !== null ) {
-										return $newUser;
-								}
-						}
-
-						return $user;
-				}, 10, 2 );
-
-
-				\Eventy::addFilter( 'subscription.events_by_type', function ( $events, $event_type, $thread ) {
-						$connectedUsers = $thread->conversation->getMeta( 'internal_conversations.users', [] );
-
-						if ( $event_type === Subscription::EVENT_TYPE_USER_ADDED_NOTE && $connectedUsers ) {
-								$events[] = self::EVENT_IC_NEW_REPLY;
-						}
-
-						if ( $event_type === Subscription::EVENT_TYPE_NEW && $connectedUsers ) {
-								$events[] = self::EVENT_IC_NEW_MESSAGE;
-						}
-
-						return $events;
-				}, 20, 3 );
-
-				\Eventy::addFilter( 'subscription.filter_out', function ( $filter_out, $subscription, $thread ) {
-						if ( $subscription->event !== self::EVENT_IC_NEW_MESSAGE && $subscription->event !== self::EVENT_IC_NEW_REPLY ) {
-								return $filter_out;
-						}
-
-						// For other events, check if user is connected to the conversation
-						$connectedUsers = $thread->conversation->getMeta( 'internal_conversations.users', [] );
-
-						if ( ! in_array( $subscription->user_id, $connectedUsers ) ) {
-								return true;
-						} else {
-								return false;
+						if ($actor && $recipient) {
+								InternalNotification::sendTo('thumbs_up', $actor, $conversation, $recipient);
 						}
 				}, 20, 3 );
-
-				\Eventy::addFilter( 'subscription.is_related_to_user', function ( $is_related, $subscription, $thread ) {
-						if ( $subscription->event !== self::EVENT_IC_NEW_MESSAGE && $subscription->event !== self::EVENT_IC_NEW_REPLY ) {
-								return $is_related;
-						}
-
-						// For other events, check if user is connected to the conversation
-						$connectedUsers = $thread->conversation->getMeta( 'internal_conversations.users', [] );
-
-						if ( in_array( $subscription->user_id, $connectedUsers ) ) {
-								return true;
-						}
-
-						return $is_related;
-				}, 20, 3 );
-
-				// Always show @mentions notification in the menu.
-				\Eventy::addFilter( 'subscription.users_to_notify', function ( $users_to_notify, $event_type, $events, $thread ) {
-						if ( in_array( self::EVENT_IC_NEW_MESSAGE, $events ) || in_array( self::EVENT_IC_NEW_REPLY, $events ) ) {
-								$connectedUsers = $thread->conversation->getMeta( 'internal_conversations.users', [] );
-								if ( count( $connectedUsers ) > 0 ) {
-										$users = User::whereIn( 'id', $connectedUsers )->get();
-										foreach ( $users as $user ) {
-												$users_to_notify[ Subscription::MEDIUM_MENU ][] = $user;
-												$users_to_notify[ Subscription::MEDIUM_MENU ]   = array_unique( $users_to_notify[ Subscription::MEDIUM_MENU ] );
-										}
-								}
-						}
-
-						return $users_to_notify;
-				}, 20, 4 );
 
 				\Eventy::addFilter( 'conversation.type_name', function ( $type ) {
 						if ( (int) $type === Conversation::TYPE_CUSTOM ) {
@@ -611,19 +518,6 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 
 						return $type;
 				}, 10, 1 );
-
-				\Eventy::addFilter( 'subscription.is_user_assignee', function ( $is_assignee, $subscription, $conversation ) {
-						if ( ! $conversation->isCustom() ) {
-								return $is_assignee;
-						}
-
-						$connectedUsers = $conversation->getMeta( 'internal_conversations.users', [] );
-						if ( in_array( $subscription->user_id, $connectedUsers ) ) {
-								return true;
-						}
-
-						return $is_assignee;
-				}, 20, 3 );
 		}
 
 		/**
