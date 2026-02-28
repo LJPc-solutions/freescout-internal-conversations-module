@@ -47,6 +47,16 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 		InternalNotification::registerType('new_conversation', 'started an internal conversation');
 		InternalNotification::registerType('new_reply', 'replied to an internal conversation');
 
+				// Block core Subscription system from sending duplicate notifications for internal conversations.
+				// The InternalNotification helper handles all notifications for custom conversations.
+				\Eventy::addFilter( 'subscription.subscriptions', function ( $subscriptions, $conversation ) {
+						if ( $conversation->isCustom() ) {
+								return collect( [] );
+						}
+
+						return $subscriptions;
+				}, 20, 2 );
+
 				\Eventy::addAction( 'conversation.new.conv_switch_buttons', function ( $mailbox ) {
 						echo \View::make( 'internalconversations::partials/conv-switch-button', [] )->render();
 				} );
@@ -508,7 +518,7 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 								if ($actor) {
 										$isNewConversation = $conversation->threads()->count() <= 1;
 										$type = $isNewConversation ? 'new_conversation' : 'new_reply';
-										InternalNotification::sendToConnected($type, $actor, $conversation);
+										InternalNotification::sendToConnected($type, $actor, $conversation, $thread);
 								}
 						}
 				}, 20, 2 );
@@ -519,7 +529,7 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						$recipient = $thread->created_by_user()->first();
 
 						if ($actor && $recipient) {
-								InternalNotification::sendTo('thumbs_up', $actor, $conversation, $recipient);
+								InternalNotification::sendTo('thumbs_up', $actor, $conversation, $recipient, $thread);
 						}
 				}, 20, 3 );
 

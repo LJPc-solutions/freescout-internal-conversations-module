@@ -4,6 +4,7 @@ namespace Modules\InternalConversations\Helpers;
 
 use App\Conversation;
 use App\Notifications\WebsiteNotification;
+use App\Thread;
 use App\User;
 
 class InternalNotification {
@@ -90,7 +91,8 @@ class InternalNotification {
 				string       $type,
 				User         $actor,
 				Conversation $conversation,
-				             $recipients
+				             $recipients,
+				Thread       $thread = null
 		): void {
 				if ( ! isset( self::$types[ $type ] ) ) {
 						\Log::warning( "InternalNotification: Unknown type '{$type}'" );
@@ -112,7 +114,7 @@ class InternalNotification {
 						return;
 				}
 
-				$thread = $conversation->threads()->first();
+				$thread = $thread ?? $conversation->threads()->first();
 
 				$notification = new WebsiteNotification(
 						$conversation,
@@ -137,7 +139,8 @@ class InternalNotification {
 		public static function sendToConnected(
 				string       $type,
 				User         $actor,
-				Conversation $conversation
+				Conversation $conversation,
+				Thread       $thread = null
 		): void {
 				$userIds = $conversation->getMeta( 'internal_conversations.users', [] );
 
@@ -147,6 +150,6 @@ class InternalNotification {
 
 				$recipients = User::whereIn( 'id', $userIds )->get();
 
-				self::sendTo( $type, $actor, $conversation, $recipients );
+				self::sendTo( $type, $actor, $conversation, $recipients, $thread );
 		}
 }
