@@ -549,6 +549,37 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 		 */
 		public function register() {
 				$this->registerTranslations();
+				$this->overrideSendReplyToCustomerListener();
+		}
+
+		/**
+		 * Workaround for the FreeScout core regression where
+		 * App\Listeners\SendReplyToCustomer::handle() calls
+		 * $conversation->customer->getMainEmail() without a null guard.
+		 * Internal conversations have no customer, so the call produces
+		 * a fatal error on UserCreatedConversation and UserReplied events.
+		 *
+		 * The container binding swaps the core listener for a subclass
+		 * that short circuits on TYPE_CUSTOM conversations. Other listeners
+		 * registered for the same events (SendNotificationToUsers,
+		 * RefreshConversations) keep firing normally.
+		 *
+		 * Upstream tracking: https://github.com/freescout-help-desk/freescout/issues/5380
+		 *
+		 * Remove this override once FreeScout core adds a null guard.
+		 */
+		private function overrideSendReplyToCustomerListener() {
+				$this->app->bind( \App\Listeners\SendReplyToCustomer::class, function () {
+						return new class extends \App\Listeners\SendReplyToCustomer {
+								public function handle( $event ) {
+										$conversation = $event->conversation ?? null;
+										if ( $conversation && method_exists( $conversation, 'isCustom' ) && $conversation->isCustom() ) {
+												return;
+										}
+										parent::handle( $event );
+								}
+						};
+				} );
 		}
 
 		/**
