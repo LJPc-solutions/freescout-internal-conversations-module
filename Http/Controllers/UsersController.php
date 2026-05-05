@@ -20,7 +20,7 @@ class UsersController extends Controller {
 
         $mailboxId = request()->input( 'mailbox_id' );
         $mailbox   = Mailbox::find( $mailboxId );
-        if ( $mailbox === null ) {
+        if ( $mailbox === null || ! $mailbox->userHasAccess( auth()->user()->id ) ) {
             return Response::json( $response );
         }
 
@@ -78,6 +78,12 @@ class UsersController extends Controller {
 
         /** @var Conversation $conversation */
         $conversation = Conversation::find( $conversationId );
+        if ( $conversation === null || ! $conversation->isCustom() ) {
+            return Response::json( [ 'status' => 'error', 'message' => 'Conversation not found' ] );
+        }
+        if ( ! auth()->user()->can( 'update', $conversation ) ) {
+            return Response::json( [ 'status' => 'error', 'message' => 'Permission denied' ] );
+        }
 
         $mailbox = $conversation->mailbox()->first();
         if ( $mailbox->userHasAccess( $userId ) === false ) {
@@ -100,6 +106,12 @@ class UsersController extends Controller {
 
         /** @var Conversation $conversation */
         $conversation = Conversation::find( $conversationId );
+        if ( $conversation === null || ! $conversation->isCustom() ) {
+            return Response::json( [ 'status' => 'error', 'message' => 'Conversation not found' ] );
+        }
+        if ( ! auth()->user()->can( 'update', $conversation ) ) {
+            return Response::json( [ 'status' => 'error', 'message' => 'Permission denied' ] );
+        }
 
         $mailbox = $conversation->mailbox()->first();
         $users   = $mailbox->usersAssignable();
@@ -128,7 +140,14 @@ class UsersController extends Controller {
         }
 
         /** @var Conversation $conversation */
-        $conversation   = Conversation::find( $conversationId );
+        $conversation = Conversation::find( $conversationId );
+        if ( $conversation === null || ! $conversation->isCustom() ) {
+            return Response::json( [ 'status' => 'error', 'message' => 'Conversation not found' ] );
+        }
+        if ( ! auth()->user()->can( 'update', $conversation ) ) {
+            return Response::json( [ 'status' => 'error', 'message' => 'Permission denied' ] );
+        }
+
         $connectedUsers = $conversation->getMeta( 'internal_conversations.users', [] );
         foreach ( $connectedUsers as $key => $connectedUserId ) {
             if ( $connectedUserId === (string) $userId ) {
@@ -147,6 +166,12 @@ class UsersController extends Controller {
 
         /** @var Conversation $conversation */
         $conversation = Conversation::find( $conversationId );
+        if ( $conversation === null || ! $conversation->isCustom() ) {
+            return Response::json( [ 'status' => 'error', 'message' => 'Conversation not found' ] );
+        }
+        if ( ! auth()->user()->can( 'update', $conversation ) ) {
+            return Response::json( [ 'status' => 'error', 'message' => 'Permission denied' ] );
+        }
 
         $connectedUsers = $conversation->getMeta( 'internal_conversations.users', [] );
         $connectedUsers = [];
@@ -169,11 +194,12 @@ class UsersController extends Controller {
             return Response::json( [ 'status' => 'error', 'message' => 'Conversation not found' ] );
         }
 
-        // Check if user has permission to modify this conversation
-        $userId = auth()->user()->id;
+        $user = auth()->user();
+        if ( ! $user->can( 'update', $conversation ) ) {
+            return Response::json( [ 'status' => 'error', 'message' => 'Permission denied' ] );
+        }
         $connectedUsers = $conversation->getMeta( 'internal_conversations.users', [] );
-
-        if ( ! in_array( (string) $userId, $connectedUsers ) ) {
+        if ( ! $user->isAdmin() && ! in_array( (string) $user->id, $connectedUsers ) ) {
             return Response::json( [ 'status' => 'error', 'message' => 'Permission denied' ] );
         }
 
