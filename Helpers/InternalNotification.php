@@ -92,7 +92,7 @@ class InternalNotification {
 				User         $actor,
 				Conversation $conversation,
 				             $recipients,
-				Thread       $thread = null
+				?Thread      $thread = null
 		): void {
 				if ( ! isset( self::$types[ $type ] ) ) {
 						\Log::warning( "InternalNotification: Unknown type '{$type}'" );
@@ -140,7 +140,7 @@ class InternalNotification {
 				string       $type,
 				User         $actor,
 				Conversation $conversation,
-				Thread       $thread = null
+				?Thread      $thread = null
 		): void {
 				$userIds = $conversation->getMeta( 'internal_conversations.users', [] );
 
