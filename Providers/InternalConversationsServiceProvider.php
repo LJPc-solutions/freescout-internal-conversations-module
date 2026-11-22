@@ -258,7 +258,7 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						}
 
 
-						$allowedConversations = $query_conversations->where( 'type', $customType )->whereRaw( $rawSqlBuilder )->pluck( 'id' )->toArray();
+						$allowedConversations = $query_conversations->where( 'type', $customType )->whereRaw( '(' . $rawSqlBuilder . ')' )->pluck( 'id' )->toArray();
 
 						if ( count( $allowedConversations ) > 0 ) {
 								$query->whereRaw( "(`conversations`.type != $customType OR `conversations`.id IN (" . implode( ',', $allowedConversations ) . "))" );
@@ -362,7 +362,7 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						}
 
 
-						$allowedConversations = $query_conversations->where( 'conversations.type', $customType )->whereRaw( $rawSqlBuilder )->pluck( 'id' )->toArray();
+						$allowedConversations = $query_conversations->where( 'conversations.type', $customType )->whereRaw( '(' . $rawSqlBuilder . ')' )->pluck( 'id' )->toArray();
 
 						if ( count( $allowedConversations ) > 0 ) {
 								$query->whereRaw( "(`conversations`.type != $customType OR `conversations`.id IN (" . implode( ',', $allowedConversations ) . "))" );
@@ -392,7 +392,7 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						$rawSqlBuilder .= " OR JSON_EXTRACT(`conversations`.meta, '$.\"internal_conversations.is_public\"') = 'true'";
 
 						$query_conversations  = Conversation::where( 'state', Conversation::STATE_PUBLISHED );
-						$allowedConversations = $query_conversations->where( 'type', $customType )->whereRaw( $rawSqlBuilder )->pluck( 'id' )->toArray();
+						$allowedConversations = $query_conversations->where( 'type', $customType )->whereRaw( '(' . $rawSqlBuilder . ')' )->pluck( 'id' )->toArray();
 
 						if ( count( $allowedConversations ) > 0 ) {
 								$query->whereRaw( "(`conversations`.type != $customType OR `conversations`.id IN (" . implode( ',', $allowedConversations ) . "))" );
