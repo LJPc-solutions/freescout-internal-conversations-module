@@ -109,6 +109,26 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 				} );
 
 				\Eventy::addAction( 'conversation.send_reply_save', function ( $conversation, $request ) {
+						// The new conversation form autosaves a draft, so the draft can still have the email or phone type
+						// when the user switches to an internal conversation (or the other way round) and sends it.
+						// Core only syncs the type for email <-> phone, so apply the type of the form here. Only for a
+						// conversation that is being created and has no published threads yet, never for an existing one.
+						$requestType = (int) $request->input( 'type' );
+						$toCustom    = $requestType === Conversation::TYPE_CUSTOM && ! $conversation->isCustom();
+						$fromCustom  = $conversation->isCustom() && in_array( $requestType, [ Conversation::TYPE_EMAIL, Conversation::TYPE_PHONE ], true );
+						if ( ( $toCustom || $fromCustom ) && ! empty( $request->input( 'is_create' ) )
+						     && ! $conversation->threads()->where( 'state', Thread::STATE_PUBLISHED )->exists() ) {
+								$conversation->type = $requestType;
+								if ( $fromCustom ) {
+										$conversation->save();
+
+										return;
+								}
+								// Internal conversations have no customer, drop the one of the email or phone draft.
+								$conversation->customer_id    = null;
+								$conversation->customer_email = null;
+						}
+
 						if ( ! $conversation->isCustom() ) {
 								return;
 						}
