@@ -227,7 +227,7 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						}
 
 						// Include public conversations
-						$rawSqlBuilder .= " OR JSON_EXTRACT(meta, '$.\"internal_conversations.is_public\"') = 'true'";
+						$rawSqlBuilder .= " OR JSON_UNQUOTE(JSON_EXTRACT(meta, '$.\"internal_conversations.is_public\"')) = 'true'";
 
 
 						if ( $folder->type == Folder::TYPE_MINE ) {
@@ -288,7 +288,7 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						}
 
 						// Include public conversations
-						$rawSqlBuilder .= " OR JSON_EXTRACT(`conversations`.meta, '$.\"internal_conversations.is_public\"') = 'true'";
+						$rawSqlBuilder .= " OR JSON_UNQUOTE(JSON_EXTRACT(`conversations`.meta, '$.\"internal_conversations.is_public\"')) = 'true'";
 
 
 						if ( is_int( $user_id ) ) {
@@ -389,7 +389,7 @@ class InternalConversationsServiceProvider extends ServiceProvider {
 						}
 
 						// Include public conversations
-						$rawSqlBuilder .= " OR JSON_EXTRACT(`conversations`.meta, '$.\"internal_conversations.is_public\"') = 'true'";
+						$rawSqlBuilder .= " OR JSON_UNQUOTE(JSON_EXTRACT(`conversations`.meta, '$.\"internal_conversations.is_public\"')) = 'true'";
 
 						$query_conversations  = Conversation::where( 'state', Conversation::STATE_PUBLISHED );
 						$allowedConversations = $query_conversations->where( 'type', $customType )->whereRaw( '(' . $rawSqlBuilder . ')' )->pluck( 'id' )->toArray();
